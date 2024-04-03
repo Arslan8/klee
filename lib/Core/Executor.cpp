@@ -121,8 +121,13 @@ cl::opt<std::string> MaxTime(
              "Set to 0s to disable (default=0s)"),
     cl::init("0s"),
     cl::cat(TerminationCat));
-} // namespace klee
 
+} // namespace klee
+namespace tklee {
+	std::map<llvm::Function *, std::vector<const llvm::Value *>> users;
+	std::map<unsigned, llvm::Function *> constraintMap;
+	extern std::map<std::string, const llvm::Value*> symNameMap;
+}
 namespace {
 
 /*** Test generation options ***/
@@ -431,7 +436,7 @@ cl::opt<bool> DebugCheckForImpliedValues(
 
 // XXX hack
 extern "C" unsigned dumpStates, dumpPTree;
-unsigned dumpStates = 0, dumpPTree = 0;
+unsigned dumpStates = 1, dumpPTree = 0;
 
 Executor::Executor(LLVMContext &ctx, const InterpreterOptions &opts,
                    InterpreterHandler *ih)
@@ -2044,6 +2049,9 @@ Function* Executor::getTargetFunction(Value *calledVal, ExecutionState &state) {
 
 void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   Instruction *i = ki->inst;
+
+  //Analyze
+
   switch (i->getOpcode()) {
     // Control flow
   case Instruction::Ret: {
@@ -3439,6 +3447,7 @@ void Executor::doDumpStates() {
   updateStates(nullptr);
 }
 
+extern bool haltExecSignal;
 void Executor::run(ExecutionState &initialState) {
   bindModuleConstants();
 
@@ -3470,6 +3479,7 @@ void Executor::run(ExecutionState &initialState) {
       lastState = it->first;
       ExecutionState &state = *lastState;
       KInstruction *ki = state.pc;
+	  klee_warning("Inside first loop: %s", ki->getSourceLocation().c_str());
       stepInstruction(state);
 
       executeInstruction(state, ki);
@@ -3518,12 +3528,15 @@ void Executor::run(ExecutionState &initialState) {
   // main interpreter loop
   while (!states.empty() && !haltExecution) {
     ExecutionState &state = searcher->selectState();
+	haltExecution = haltExecSignal;
     KInstruction *ki = state.pc;
     stepInstruction(state);
 
     executeInstruction(state, ki);
+//	klee_warning("Inside Second loop: %s", ki->getSourceLocation().c_str());
     timers.invoke();
-    if (::dumpStates) dumpStates();
+    //if (::dumpStates) 
+			dumpStates();
     if (::dumpPTree) dumpPTree();
 
     updateStates(&state);
@@ -4137,7 +4150,7 @@ void Executor::resolveExact(ExecutionState &state,
                           StateTerminationType::Ptr, getAddressInfo(*unbound, p));
   }
 }
-
+#include<iostream>
 void Executor::executeMemoryOperation(ExecutionState &state,
                                       bool isWrite,
                                       ref<Expr> address,
@@ -4155,7 +4168,19 @@ void Executor::executeMemoryOperation(ExecutionState &state,
   }
 
   address = optimizer.optimizeExpr(address, true);
+  auto go = this->kmodule->module->getNamedValue("taint");
+  auto mo = this->globalObjects[go];
 
+  std::cerr<<"Address being accessed:";
+  address->dump();
+  auto base = mo->getBaseExpr();
+  std::cerr<<"Taint address";
+  base->dump();
+  if (address == base) {
+		  std::cout<<"Taint user found"<<std::endl;
+		  auto pc = state.pc;
+		  std::cout<<"User"<< pc->inst->getParent()->getName().str() << std::endl;
+  }
   // fast path: single in-bounds resolution
   ObjectPair op;
   bool success;
@@ -4265,6 +4290,9 @@ void Executor::executeMemoryOperation(ExecutionState &state,
   }
 }
 
+namespace tklee {
+		std::map<std::string, const llvm::Value*> symNameMap;
+}
 void Executor::executeMakeSymbolic(ExecutionState &state, 
                                    const MemoryObject *mo,
                                    const std::string &name) {
@@ -4278,6 +4306,7 @@ void Executor::executeMakeSymbolic(ExecutionState &state,
       uniqueName = name + "_" + llvm::utostr(++id);
     }
     const Array *array = arrayCache.CreateArray(uniqueName, mo->size);
+	tklee::symNameMap[uniqueName] = mo->allocSite;
     bindObjectInState(state, mo, false, array);
     state.addSymbolic(mo, array);
     
@@ -4686,10 +4715,75 @@ void Executor::dumpPTree() {
 
   ::dumpPTree = 0;
 }
+#define vContains(v, arg) (std::find(v.begin(), v.end(), arg) != v.end())
+void printKidsRec(klee::ref<Expr> con, llvm::Function * func, ExecutionState* state) {
+		if (auto re= dyn_cast<klee::ReadExpr>(con)) {
+                        //re->dump();
+						//re->getKid(0)->dump();
+						//re->index->dump();
+						auto var_name = re->updates.root->name;
+						/*
+						if (users.find(func) == m.end()) {
+								users[func]
+						}
+						*/
+						//If already in the list don't add 
+#if 0
+						int once =0;
+						ExecutionState * state;
+						for (ExecutionState *es : states) {
+								if (!once) {
+										//Find memory object.
+										state = es;
+										once =1;
+								}
+
+						}
+#endif 
+						const llvm::Value * var=NULL;
+						for (auto symbol: state->symbolics) {
+								if (symbol.first->name == var_name) {
+										var= symbol.first->allocSite;
+								}
+						}
+
+						if (!var)  {
+#if 0
+								for (auto obj: state->addressSpace.objects) {
+       							       llvm::errs()<<obj.first->name<<"\n";
+							    }
+#endif 
+
+								var = tklee::symNameMap[var_name];
+						}
+
+						//Find variable 
+						if (var && !vContains(tklee::users[func], var)) { 
+								tklee::users[func].push_back(var);
+						}
+
+
+						/* 
+						if (re->updates.root) {
+							re->updates.head->index->dump();
+							re->updates.head->value->dump();
+						}
+						*/
+                }
+		if (con->getNumKids()==0) {
+		}
+		else {
+			for (unsigned int i=0; i < con->getNumKids(); i++) {
+                printKidsRec(con->getKid(i), func, state);
+        	}
+		}
+}
 
 void Executor::dumpStates() {
-  if (!::dumpStates) return;
 
+  if (!::dumpStates) return;
+  std::ofstream outfile("test_states.txt", std::ios_base::app);
+  //auto os = &llvm::errs();
   auto os = interpreterHandler->openOutputFile("states.txt");
 
   if (os) {
@@ -4698,9 +4792,11 @@ void Executor::dumpStates() {
       *os << "[";
       auto next = es->stack.begin();
       ++next;
+	  llvm::Function * last_func = NULL;
       for (auto sfIt = es->stack.begin(), sf_ie = es->stack.end();
            sfIt != sf_ie; ++sfIt) {
         *os << "('" << sfIt->kf->function->getName().str() << "',";
+		last_func = sfIt->kf->function;
         if (next == es->stack.end()) {
           *os << es->prevPC->info->line << "), ";
         } else {
@@ -4709,6 +4805,43 @@ void Executor::dumpStates() {
         }
       }
       *os << "], ";
+#if 0
+	  *os<<"[, ";
+	  for (auto obj: es->addressSpace.objects) {
+			  *os<<obj.first->name;
+			  *os<<", ";
+	  }
+	  *os<<"], ";
+#endif 
+
+	  *os << "Stack Trace \n";
+	  *os << "(" << es << ",";
+      *os<< "[";
+      auto next1 = es->stack.begin();
+      ++next1;
+      for (auto sfIt = es->stack.begin(), sf_ie = es->stack.end();
+           sfIt != sf_ie; ++sfIt) {
+        *os << "('" << sfIt->kf->function->getName().str() << "',";
+        if (next1 == es->stack.end()) {
+          *os << es->prevPC->info->line << "), ";
+        } else {
+          *os << next1->caller->info->line << "), ";
+          ++next1;
+        }
+      }
+      *os << "], ";
+
+
+
+	  *os<<"[, ";
+      for (auto con: es->constraints) {
+			  if (!tklee::constraintMap.count(con->hash())) {
+				  printKidsRec(con, last_func, es);
+				  tklee::constraintMap[con->hash()] = last_func;
+			  }
+              *os<<", ";
+      }
+      *os<<"], ";
 
       StackFrame &sf = es->stack.back();
       uint64_t md2u = computeMinDistToUncovered(es->pc,
@@ -4730,7 +4863,7 @@ void Executor::dumpStates() {
     }
   }
 
-  ::dumpStates = 0;
+//  ::dumpStates = 0;
 }
 
 ///

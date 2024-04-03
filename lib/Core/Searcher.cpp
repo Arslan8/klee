@@ -15,6 +15,7 @@
 #include "MergeHandler.h"
 #include "PTree.h"
 #include "StatsTracker.h"
+#include <fstream>
 
 #include "klee/ADT/DiscretePDF.h"
 #include "klee/ADT/RNG.h"
@@ -37,8 +38,9 @@ using namespace klee;
 using namespace llvm;
 
 
-///
 
+
+///
 ExecutionState &DFSSearcher::selectState() {
   return *states.back();
 }
@@ -520,6 +522,115 @@ void IterativeDeepeningTimeSearcher::printName(llvm::raw_ostream &os) {
 
 
 ///
+
+#include <iostream>
+Executor* temp;
+LLoopSearcher::LLoopSearcher(Executor& exe) {
+	std::string s;
+	//Big TODO: take arg
+	std::ifstream infile("/home/arslan/projects/LBC/SVF/partitioner/out/loop");
+	std::string delimiter = "##";
+	std::string funName;
+	std::string BBID;
+	temp = &exe;
+	while (std::getline(infile, s))
+	{
+    	// process pair (a,b)
+		std::string token;
+    	token = s.substr(0, s.find(delimiter));
+		funName = token;
+		auto fun = exe.kmodule->module->getFunction(funName);
+		//fun->dump();
+		s.erase(0, s.find(delimiter) + delimiter.length());
+        auto headerName = s;
+        std::cout<<token<<std::endl;
+		errs()<<"Initial Addresses \n";
+		for (BasicBlock &bb : *fun) {
+				std::string temp;
+		        llvm::raw_string_ostream sstream(temp);
+				bb.printAsOperand(sstream, false);
+				if (temp == headerName) {
+						errs()<<&(*(bb.begin()));
+						headerBBDoms.push_back(&(*(bb.begin())));
+						errs()<<"\n";
+						break;
+				}
+		}
+	}
+}
+
+void LLoopSearcher::update(ExecutionState *current,
+                const std::vector<ExecutionState *> &addedStates,
+                const std::vector<ExecutionState *> &removedStates) {
+  // insert states
+  states.insert(states.end(), addedStates.begin(), addedStates.end());
+
+  if (!addedStates.empty()) {	  
+	  for (const auto state: addedStates) {
+		stateScore[state] = 0;
+	  }
+  }
+
+  // remove states
+  for (const auto state : removedStates) {
+    if (state == states.back()) {
+	  stateScore.erase(state);
+      states.pop_back();
+    } else {
+      auto it = std::find(states.begin(), states.end(), state);
+      assert(it != states.end() && "invalid state removed");
+	  stateScore.erase(*it);
+      states.erase(it);
+    }
+  }
+}
+bool init2 = true;
+bool haltExecSignal = false;
+#define vContains(v, arg) (std::find(v.begin(), v.end(), arg) != v.end())
+ExecutionState& LLoopSearcher::selectState() {
+		//Send back the highest priority state. 
+		ExecutionState * sstate = NULL;
+		int min_score =L_THRESHOLD;
+		for (auto node:stateScore) {
+				auto score = node.second;
+				auto state = node.first;
+
+				if (score<min_score) {
+						sstate = state;
+						min_score = score;
+				}
+		}
+
+
+		if (min_score >= L_THRESHOLD) {
+				//Terminate Execution, TODO: Let's figure this out
+				haltExecSignal = true;
+				sstate = stateScore.begin()->first;
+		}
+		auto PC = sstate->pc->inst;
+		//errs()<<sstate->pc->inst;
+		for (auto inst: headerBBDoms) {
+				//errs()<<"Comparing"<<inst<<" with "<<sstate->pc->inst <<"\n";
+				if (inst == sstate->pc->inst) {
+						stateScore[sstate]++;
+				}
+		}
+#if 0
+		if (vContains(headerBBDoms, PC)) {
+				//We're hitting a loop here
+				stateScore[sstate]++;
+		} 
+#endif 
+		return *sstate;
+}
+
+bool LLoopSearcher::empty() {
+		return true;
+}
+
+void LLoopSearcher::printName(llvm::raw_ostream &os) {
+		os<<"Leap Loop \n";
+}
 
 InterleavedSearcher::InterleavedSearcher(const std::vector<Searcher*> &_searchers) {
   searchers.reserve(_searchers.size());

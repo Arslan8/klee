@@ -687,6 +687,10 @@ static int __df_chown(exe_disk_file_t *df, uid_t owner, gid_t group) {
   return -1;  
 }
 
+int arslan_awesome_function() {
+		klee_warning("Awesome function called \n");
+		return 0;
+}
 int chown(const char *path, uid_t owner, gid_t group) {
   exe_disk_file_t *df = __get_sym_file(path);
 

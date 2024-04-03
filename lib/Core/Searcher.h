@@ -71,8 +71,27 @@ namespace klee {
       NURS_RP,
       NURS_ICnt,
       NURS_CPICnt,
-      NURS_QC
+      NURS_QC,
+	  LLOP
     };
+  };
+
+  //Try to avoid infinite loops based on a count. Leap loops.
+  class LLoopSearcher final: public Searcher {
+	static const int L_THRESHOLD=100;
+	std::vector<ExecutionState*> states;
+//	std::map<ExecutionState*, std::map<llvm::BasicBlock *, int>> headerMetadata; //PerState header metadata tells how many times a block may have been hit.
+	std::map<ExecutionState*, int> stateScore;
+	std::vector<llvm::Instruction *> headerBBDoms;
+
+  public:
+	explicit LLoopSearcher(Executor& exe);
+    ExecutionState &selectState() override;
+    void update(ExecutionState *current,
+                const std::vector<ExecutionState *> &addedStates,
+                const std::vector<ExecutionState *> &removedStates) override;
+    bool empty() override;
+    void printName(llvm::raw_ostream &os) override;
   };
 
   /// DFSSearcher implements depth-first exploration. All states are kept in

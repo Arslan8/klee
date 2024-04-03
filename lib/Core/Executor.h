@@ -99,12 +99,12 @@ class Executor : public Interpreter {
 
 public:
   typedef std::pair<ExecutionState*,ExecutionState*> StatePair;
+  std::unique_ptr<KModule> kmodule;
 
   /// The random number generator.
   RNG theRNG;
 
 private:
-  std::unique_ptr<KModule> kmodule;
   InterpreterHandler *interpreterHandler;
   Searcher *searcher;
 

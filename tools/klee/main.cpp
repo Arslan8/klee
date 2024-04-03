@@ -62,6 +62,9 @@
 using namespace llvm;
 using namespace klee;
 
+namespace tklee {
+    extern std::map<llvm::Function *, std::vector<llvm::Value *>> users;
+}
 namespace {
   cl::opt<std::string>
   InputFile(cl::desc("<input bytecode>"), cl::Positional, cl::init("-"));
@@ -1535,6 +1538,17 @@ int main(int argc, char **argv, char **envp) {
     }
   }
 
+  //TODO: Free here before we free 
+  std::stringstream stats;
+  for (auto user: tklee::users) {
+//        user.first->dump();
+          stats<< user.first->getName().str() << "uses: \n";
+
+          for (auto p : tklee::users[user.first]) {
+                  stats <<"  "<<p->getName().str()<< "\n";
+          }
+  }
+
   auto endTime = std::time(nullptr);
   { // output end and elapsed time
     std::uint32_t h;
@@ -1591,7 +1605,6 @@ int main(int argc, char **argv, char **envp) {
     << "KLEE: done: invalid queries = " << queriesInvalid << "\n"
     << "KLEE: done: query cex = " << queryCounterexamples << "\n";
 
-  std::stringstream stats;
   stats << '\n'
         << "KLEE: done: total instructions = " << instructions << '\n'
         << "KLEE: done: completed paths = " << handler->getNumPathsCompleted()
