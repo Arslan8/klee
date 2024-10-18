@@ -199,6 +199,9 @@ public:
   /// @brief Set containing which lines in which files are covered by this state
   std::map<const std::string *, std::set<std::uint32_t>> coveredLines;
 
+  // Write tracker
+  std::map<std::pair<ref<const MemoryObject>, ref<Expr>>, ref<Expr>> writeTracker;
+
   /// @brief Pointer to the process tree of the current state
   /// Copies of ExecutionState should not copy ptreeNode
   PTreeNode *ptreeNode = nullptr;

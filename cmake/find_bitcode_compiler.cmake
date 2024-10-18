@@ -61,6 +61,13 @@ function(test_bitcode_compiler COMPILER SRC_EXT)
       "${SRC_FILE}"
     RESULT_VARIABLE COMPILE_INVOKE_EXIT_CODE
   )
+  message(
+      "${COMPILER}"
+      " -c "
+      " -emit-llvm "
+      " -o " " ${BC_FILE} "
+      " ${SRC_FILE} "
+  )
   if ("${COMPILE_INVOKE_EXIT_CODE}" EQUAL 0)
     message(STATUS "Compile success")
   else()

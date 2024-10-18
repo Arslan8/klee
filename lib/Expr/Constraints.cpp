@@ -155,9 +155,14 @@ void ConstraintManager::addConstraintInternal(const ref<Expr> &e) {
   }
 }
 
+bool disable_query_opt = false;
 void ConstraintManager::addConstraint(const ref<Expr> &e) {
   ref<Expr> simplified = simplifyExpr(constraints, e);
-  addConstraintInternal(simplified);
+  if ((disable_query_opt) || simplified->isFalse()) {
+		  addConstraintInternal(e);
+  } else  {
+		  addConstraintInternal(simplified);
+  }
 }
 
 ConstraintManager::ConstraintManager(ConstraintSet &_constraints)

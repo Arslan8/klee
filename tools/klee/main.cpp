@@ -42,6 +42,8 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include "llvm/Support/TargetSelect.h"
+#include "llvm/Support/TargetRegistry.h"
+#include "llvm/Target/TargetMachine.h"
 #include "llvm/Support/Signals.h"
 
 
@@ -165,7 +167,7 @@ namespace {
   cl::OptionCategory LinkCat("Linking options",
                              "These options control the libraries being linked.");
 
-  enum class LibcType { FreestandingLibc, KleeLibc, UcLibc };
+  enum class LibcType { FreestandingLibc, KleeLibc, UcLibc , BareMetal};
 
   cl::opt<LibcType> Libc(
       "libc", cl::desc("Choose libc version (none by default)."),
@@ -175,7 +177,8 @@ namespace {
               "Don't link in a libc (only provide freestanding environment)"),
           clEnumValN(LibcType::KleeLibc, "klee", "Link in KLEE's libc"),
           clEnumValN(LibcType::UcLibc, "uclibc",
-                     "Link in uclibc (adapted for KLEE)")),
+                     "Link in uclibc (adapted for KLEE)"),
+	  	  clEnumValN(LibcType::BareMetal, "baremetal", "Baremetal")),
       cl::init(LibcType::FreestandingLibc), cl::cat(LinkCat));
 
   cl::list<std::string>
@@ -348,7 +351,7 @@ public:
 
   static std::string getRunTimeLibraryPath(const char *argv0);
 };
-
+const char * output_directory;
 KleeHandler::KleeHandler(int argc, char **argv)
     : m_interpreter(0), m_pathWriter(0), m_symPathWriter(0),
       m_outputDirectory(), m_numTotalTests(0), m_numGeneratedTests(0),
@@ -369,6 +372,7 @@ KleeHandler::KleeHandler(int argc, char **argv)
       klee_error("cannot create \"%s\": %s", directory.c_str(), strerror(errno));
 
     m_outputDirectory = directory;
+	output_directory = directory.c_str();
   } else {
     // "klee-out-<i>"
     int i = 0;
@@ -404,6 +408,8 @@ KleeHandler::KleeHandler(int argc, char **argv)
   }
 
   klee_message("output directory is \"%s\"", m_outputDirectory.c_str());
+  //TODO: Hack
+  output_directory = m_outputDirectory.c_str();
 
   // open warnings.txt
   std::string file_path = getOutputFilename("warnings.txt");
@@ -908,6 +914,7 @@ void externalsAndGlobalsCheck(const llvm::Module *m) {
                     dontCareUclibc+NELEMS(dontCareUclibc));
     break;
   case LibcType::FreestandingLibc: /* silence compiler warning */
+  case LibcType::BareMetal:
     break;
   }
 
@@ -1164,6 +1171,9 @@ int main(int argc, char **argv, char **envp) {
 #endif
 
   llvm::InitializeNativeTarget();
+  LLVMInitializeARMTargetInfo();
+  LLVMInitializeARMTarget();
+  LLVMInitializeARMTargetMC();
 
   parseArguments(argc, argv);
   sys::PrintStackTraceOnErrorSignal(argv[0]);
@@ -1261,9 +1271,15 @@ int main(int argc, char **argv, char **envp) {
   const std::string &module_triple = mainModule->getTargetTriple();
   std::string host_triple = llvm::sys::getDefaultTargetTriple();
 
+  for (const llvm::Target T : TargetRegistry::targets()) {
+        // Print target name and description
+        outs() << "Name: " << T.getName() << "\n";
+        outs() << "Description: " << T.getShortDescription() << "\n";
+  }
+
   if (module_triple != host_triple)
-    klee_warning("Module and host target triples do not match: '%s' != '%s'\n"
-                 "This may cause unexpected crashes or assertion violations.",
+    klee_warning("EXPERIMENTAL: Running '%s' on '%s'\n"
+                 "Limited features such as materialization, sanitizers and runtime",
                  module_triple.c_str(), host_triple.c_str());
 
   // Detect architecture
@@ -1273,6 +1289,13 @@ int main(int argc, char **argv, char **envp) {
       module_triple.find("i486") != std::string::npos ||
       module_triple.find("i386") != std::string::npos)
     opt_suffix = "32";
+
+   if (module_triple != host_triple) {
+		   std::string DataLayoutStr = mainModule->getDataLayoutStr();
+		   if (DataLayoutStr.find("e-p:32:") != std::string::npos) {
+				   opt_suffix = "32";
+		   }
+   }
 
   // Add additional user-selected suffix
   opt_suffix += "_" + RuntimeBuild.getValue();
@@ -1349,6 +1372,8 @@ int main(int argc, char **argv, char **envp) {
   case LibcType::UcLibc:
     linkWithUclibc(LibraryDir, opt_suffix, loadedModules);
     break;
+  case LibcType::BareMetal:
+	break;
   }
 
   for (const auto &library : LinkLibraries) {

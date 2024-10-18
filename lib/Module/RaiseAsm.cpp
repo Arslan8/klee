@@ -83,6 +83,31 @@ bool RaiseAsmPass::runOnModule(Module &M) {
     TargetTriple = llvm::sys::getDefaultTargetTriple();
   const Target *Target = TargetRegistry::lookupTarget(TargetTriple, Err);
 
+  for (const llvm::Target T : TargetRegistry::targets()) {
+        // Print target name and description
+        outs() << "Name: " << T.getName() << "\n";
+        outs() << "Description: " << T.getShortDescription() << "\n";
+
+        // Print target CPU names
+#if 0
+        outs() << "CPUs: ";
+        for (StringRef CPU : T->getCPUs()) {
+            outs() << CPU << " ";
+        }
+        outs() << "\n";
+
+        // Print target features
+        outs() << "Features: ";
+        for (StringRef Feature : T->getFeatures()) {
+            outs() << Feature << " ";
+        }
+        outs() << "\n";
+#endif
+
+        // Add any other information you want to print about the target
+        outs() << "\n";
+    }
+
   TargetMachine * TM = 0;
   if (Target == 0) {
     klee_warning("Warning: unable to select target: %s", Err.c_str());

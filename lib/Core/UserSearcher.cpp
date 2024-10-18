@@ -48,7 +48,8 @@ cl::list<Searcher::CoreSearchType> CoreSearch(
         clEnumValN(Searcher::NURS_CPICnt, "nurs:cpicnt",
                    "use NURS with CallPath-Instr-Count"),
         clEnumValN(Searcher::NURS_QC, "nurs:qc", "use NURS with Query-Cost"),
-		clEnumValN(Searcher::LLOP, "lloop", "Leap Infinite Loops")),
+		clEnumValN(Searcher::LLOP, "lloop", "Leap Infinite Loops"),
+		clEnumValN(Searcher::FSUM, "fsum", "Generate Function Summary")),
     cl::cat(SearchCat));
 
 cl::opt<bool> UseIterativeDeepeningTimeSearch(
@@ -119,6 +120,7 @@ Searcher *getNewSearcher(Searcher::CoreSearchType type, RNG &rng, PTree &process
     case Searcher::NURS_CPICnt: searcher = new WeightedRandomSearcher(WeightedRandomSearcher::CPInstCount, rng); break;
     case Searcher::NURS_QC: searcher = new WeightedRandomSearcher(WeightedRandomSearcher::QueryCost, rng); break;
 	case Searcher::LLOP: searcher = new LLoopSearcher(exe);break;
+	case Searcher::FSUM: searcher = new FSumSearcher(exe);break;
   }
 
   return searcher;

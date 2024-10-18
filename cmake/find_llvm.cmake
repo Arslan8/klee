@@ -152,6 +152,7 @@ else()
   _run_llvm_config(LLVM_LIBRARY_DIRS "--libdir")
   _run_llvm_config(LLVM_TOOLS_BINARY_DIR "--bindir")
   _run_llvm_config(TARGET_TRIPLE "--host-target")
+  set(TARGET_TRIPLE "thumbv7em-none-unknown-eabihf")
 
   _run_llvm_config(LLVM_BUILD_MAIN_SRC_DIR "--src-root")
   if (NOT EXISTS "${LLVM_BUILD_MAIN_SRC_DIR}")
@@ -179,6 +180,7 @@ else()
 
       string(REGEX REPLACE "^(lib)?(LLVM[-.a-zA-Z0-9]+)\\..+$" "\\2" target_name "${llvm_lib_file_name}")
       list(APPEND targets_to_return "${target_name}")
+	  message("${target_name}")
       if (NOT TARGET "${target_name}")
         # DEBUG: message(STATUS "Creating imported target \"${target_name}\"" " for \"${llvm_lib}\"")
         list(APPEND created_targets "${target_name}")
@@ -188,12 +190,14 @@ else()
           set(import_library_type "SHARED")
         endif()
         # Create an imported target for the library
+		message(" ${target_name}  ${import_library_type}")
         add_library("${target_name}" "${import_library_type}" IMPORTED GLOBAL)
         set_property(TARGET "${target_name}" PROPERTY
           IMPORTED_LOCATION "${llvm_lib}"
         )
       endif()
     endforeach()
+
 
     # Now state the dependencies of the created imported targets which we
     # assume to be for each imported target the libraries which appear after
